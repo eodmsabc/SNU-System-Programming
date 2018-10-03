@@ -14,33 +14,33 @@ static ssize_t read_output(struct file *fp,
                         size_t length,
                         loff_t *position)
 {
-        // Implement read file operation
+	// Implement read file operation
 }
 
 static const struct file_operations dbfs_fops = {
-        // Mapping file operations with your functions
+	// Mapping file operations with your functions
 };
 
 static int __init dbfs_module_init(void)
 {
-        // Implement init module
+	// Implement init module
 
-        dir = debugfs_create_dir("paddr", NULL);
+	dir = debugfs_create_dir("paddr", NULL);
 
-        if (!dir) {
-                printk("Cannot create paddr dir\n");
-                return -1;
-        }
+	if (!dir) {
+		printk("Cannot create paddr dir\n");
+		return -1;
+	}
 
-        // Fill in the arguments below
-        output = debugfs_create_file("output", , , , );
+	// Fill in the arguments below
+	// output = debugfs_create_file("output", , , , );
 
-        return 0;
+	return 0;
 }
 
 static void __exit dbfs_module_exit(void)
 {
-        // Implement exit module
+	// Implement exit module
 }
 
 module_init(dbfs_module_init);
