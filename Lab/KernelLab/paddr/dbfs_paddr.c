@@ -3,22 +3,51 @@
 #include <linux/module.h>
 #include <linux/uaccess.h>
 #include <asm/pgtable.h>
+#include <linux/slab.h>
+
+//typedef struct debugfs_blob_wrapper sdbw;
 
 MODULE_LICENSE("GPL");
 
 static struct dentry *dir, *output;
 static struct task_struct *task;
 
+struct packet {
+	pid_t pid;
+	unsigned long vaddr;
+	unsigned long paddr;
+};
+
 static ssize_t read_output(struct file *fp,
                         char __user *user_buffer,
                         size_t length,
                         loff_t *position)
 {
-	// Implement read file operation
+	struct packet *pbuf = (struct packet *)user_buffer;
+	pid_t pid = pbuf->pid;
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *pte;
+	unsigned long vad = pbuf->vaddr;
+	unsigned long pgad = 0, pgof = 0;
+
+	task = pid_task(find_vpid(pid), PIDTYPE_PID);
+	
+	pgd = pgd_offset(task->mm, vad);
+	pud = pud_offset(pgd, vad);
+	pmd = pmd_offset(pud, vad);
+	pte = pte_offset_kernel(pmd,vad);
+
+	pgad = pte_val(*pte) & PAGE_MASK;
+	pgof = vad & ~PAGE_MASK;
+	pbuf->paddr = pgad | pgof;
+
+	return 0;
 }
 
 static const struct file_operations dbfs_fops = {
-	// Mapping file operations with your functions
+	.read = read_output,
 };
 
 static int __init dbfs_module_init(void)
@@ -33,14 +62,14 @@ static int __init dbfs_module_init(void)
 	}
 
 	// Fill in the arguments below
-	// output = debugfs_create_file("output", , , , );
+	output = debugfs_create_file("output", 0444, dir, NULL, &dbfs_fops);
 
 	return 0;
 }
 
 static void __exit dbfs_module_exit(void)
 {
-	// Implement exit module
+	debugfs_remove_recursive(dir);
 }
 
 module_init(dbfs_module_init);

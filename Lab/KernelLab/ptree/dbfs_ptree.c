@@ -13,7 +13,6 @@ MODULE_LICENSE("GPL");
 static struct dentry *dir, *inputdir, *ptreedir;
 static struct task_struct *curr;
 
-//struct debugfs_blob_wrapper *dbw;
 sdbw *dbw;
 char *fstr;
 
@@ -59,13 +58,12 @@ static int __init dbfs_module_init(void)
 		printk("Cannot create ptree dir\n");
 		return -1;
 	}
-	fstr = kmalloc(MYSIZE * sizeof(char), GFP_KERNEL);
+	fstr = (char *)kmalloc(MYSIZE * sizeof(char), GFP_KERNEL);
 	dbw = (sdbw *)kmalloc(sizeof(sdbw), GFP_KERNEL);
 	dbw->data = (void *) fstr;
 	dbw->size = (unsigned long) MYSIZE * sizeof(char);
 	inputdir = debugfs_create_file("input", 0644, dir, NULL, &dbfs_fops);
 	ptreedir = debugfs_create_blob("ptree", 0444, dir, dbw);
-	// Find suitable debugfs API
 
 	return 0;
 }
@@ -75,7 +73,6 @@ static void __exit dbfs_module_exit(void)
 	debugfs_remove_recursive(dir);
 	kfree(dbw);
 	kfree(fstr);
-	// Implement exit module code
 }
 
 module_init(dbfs_module_init);
