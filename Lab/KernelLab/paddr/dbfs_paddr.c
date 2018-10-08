@@ -4,8 +4,7 @@
 #include <linux/uaccess.h>
 #include <asm/pgtable.h>
 #include <linux/slab.h>
-
-//typedef struct debugfs_blob_wrapper sdbw;
+#include <asm/io.h>
 
 MODULE_LICENSE("GPL");
 
@@ -30,7 +29,7 @@ static ssize_t read_output(struct file *fp,
 	pmd_t *pmd;
 	pte_t *pte;
 	unsigned long vad = pbuf->vaddr;
-	unsigned long pgad = 0, pgof = 0;
+	unsigned long ppn = 0, ppo = 0;
 
 	task = pid_task(find_vpid(pid), PIDTYPE_PID);
 	
@@ -39,9 +38,10 @@ static ssize_t read_output(struct file *fp,
 	pmd = pmd_offset(pud, vad);
 	pte = pte_offset_kernel(pmd,vad);
 
-	pgad = pte_val(*pte) & PAGE_MASK;
-	pgof = vad & ~PAGE_MASK;
-	pbuf->paddr = pgad | pgof;
+	ppn = pte_pfn(*pte) << PAGE_SHIFT;
+	ppo = vad & (~PAGE_MASK);
+//	printk(KERN_EMERG"p : %lx\n", pte_val(*pte));
+	pbuf->paddr = ppn | ppo;
 
 	return 0;
 }
@@ -52,7 +52,6 @@ static const struct file_operations dbfs_fops = {
 
 static int __init dbfs_module_init(void)
 {
-	// Implement init module
 
 	dir = debugfs_create_dir("paddr", NULL);
 
@@ -61,7 +60,6 @@ static int __init dbfs_module_init(void)
 		return -1;
 	}
 
-	// Fill in the arguments below
 	output = debugfs_create_file("output", 0444, dir, NULL, &dbfs_fops);
 
 	return 0;
