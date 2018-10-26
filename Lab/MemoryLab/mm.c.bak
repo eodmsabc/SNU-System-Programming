@@ -73,7 +73,7 @@ static void remove_range(range_t **ranges, char *lo)
 
 #define WSIZE 4
 #define DSIZE 8
-#define CHUNKSIZE (1<<12)
+#define CHUNKSIZE (1<<6)
 
 #define MIN_BLOCK_SIZE (2 * DSIZE)
 
@@ -81,11 +81,13 @@ static void remove_range(range_t **ranges, char *lo)
 #define MIN(x, y)	((x) > (y)? (y) : (x))
 
 #define PACK(size, alloc) 	((size) | (alloc))
+#define PACK_GRP(size, alloc) ((size) | (alloc) | 0x2)
 
 #define GET(p)			(*(unsigned int*)(p))
 #define PUT(p, val)		(*(unsigned int*)(p) = (val))
 
 #define GET_SIZE(p)		(GET(p) & ~0x7)
+#define GET_ISGRP(p)	(GET(p) & 0x2)
 #define GET_ALLOC(p)	(GET(p) & 0x1)
 
 #define HDRP(bp)		((char*)(bp) - WSIZE)
@@ -99,14 +101,23 @@ static void remove_range(range_t **ranges, char *lo)
 #define NEXT_BLKP(bp)	((char*)(bp) + GET_SIZE((char*)(bp) - WSIZE))
 #define PREV_BLKP(bp)	((char*)(bp) - GET_SIZE((char*)(bp) - DSIZE))
 
-#define SIZE_CLASS_NUM 8
-#define SIZE_CLASS_0 (1 <<  4)
-#define SIZE_CLASS_1 (1 <<  5)
-#define SIZE_CLASS_2 (1 <<  6)
-#define SIZE_CLASS_3 (1 <<  8)
-#define SIZE_CLASS_4 (1 << 10)
-#define SIZE_CLASS_5 (1 << 12)
-#define SIZE_CLASS_6 (1 << 14)
+#define SIZE_CLASS_NUM 16
+
+#define SIZE_CLASS_0	16
+#define SIZE_CLASS_1	32
+#define SIZE_CLASS_2	48
+#define SIZE_CLASS_3	64
+#define SIZE_CLASS_4	96
+#define SIZE_CLASS_5	128
+#define SIZE_CLASS_6	256
+#define SIZE_CLASS_7	384
+#define SIZE_CLASS_8	512
+#define SIZE_CLASS_9	1024
+#define SIZE_CLASS_10	2048
+#define SIZE_CLASS_11	4096
+#define SIZE_CLASS_12	8192
+#define SIZE_CLASS_13	16384
+#define SIZE_CLASS_14	32768
 
 static void *size_class_p;
 static void *prologue;
@@ -119,7 +130,15 @@ static int get_size_class(size_t asize) {
 	else if (asize <= SIZE_CLASS_4) return 4;
 	else if (asize <= SIZE_CLASS_5) return 5;
 	else if (asize <= SIZE_CLASS_6) return 6;
-	else return 7;
+	else if (asize <= SIZE_CLASS_7) return 7;
+	else if (asize <= SIZE_CLASS_8) return 8;
+	else if (asize <= SIZE_CLASS_9) return 9;
+	else if (asize <= SIZE_CLASS_10) return 10;
+	else if (asize <= SIZE_CLASS_11) return 11;
+	else if (asize <= SIZE_CLASS_12) return 12;
+	else if (asize <= SIZE_CLASS_13) return 13;
+	else if (asize <= SIZE_CLASS_14) return 14;
+	else return 15;
 }
 
 static void *get_class_root(int class) {
