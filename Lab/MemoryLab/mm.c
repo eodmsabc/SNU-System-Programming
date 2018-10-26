@@ -73,7 +73,7 @@ static void remove_range(range_t **ranges, char *lo)
 #define WSIZE 4
 #define DSIZE 8
 #define CHUNKSIZE (1<<9)
-#define GRP_CREATE_NUM (1<<4)
+#define GRP_CREATE_NUM (1<<3)
 
 #define MIN_BLOCK_SIZE (2 * DSIZE)
 
