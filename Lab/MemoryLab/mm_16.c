@@ -110,8 +110,8 @@ static void remove_range(range_t **ranges, char *lo)
 #define SIZE_CLASS_4	96
 #define SIZE_CLASS_5	128
 #define SIZE_CLASS_6	256
-#define SIZE_CLASS_7	384
-#define SIZE_CLASS_8	512
+#define SIZE_CLASS_7	512
+#define SIZE_CLASS_8	768
 #define SIZE_CLASS_9	1024
 #define SIZE_CLASS_10	2048
 #define SIZE_CLASS_11	4096
@@ -130,15 +130,7 @@ static int get_size_class(size_t asize) {
 	else if (asize <= SIZE_CLASS_4) return 4;
 	else if (asize <= SIZE_CLASS_5) return 5;
 	else if (asize <= SIZE_CLASS_6) return 6;
-	else if (asize <= SIZE_CLASS_7) return 7;
-	else if (asize <= SIZE_CLASS_8) return 8;
-	else if (asize <= SIZE_CLASS_9) return 9;
-	else if (asize <= SIZE_CLASS_10) return 10;
-	else if (asize <= SIZE_CLASS_11) return 11;
-	else if (asize <= SIZE_CLASS_12) return 12;
-	else if (asize <= SIZE_CLASS_13) return 13;
-	else if (asize <= SIZE_CLASS_14) return 14;
-	else return 15;
+	else return 7;
 }
 
 static void *get_class_root(int class) {

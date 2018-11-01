@@ -1,13 +1,13 @@
 /*
- * mm.c
- * Memory Allocation with Segregated Free Lists (Segregated Fits)
+ * mm-naive.c - The fastest, least memory-efficient malloc package.
  *
- * Free blocks are categorized into 32 size classes.
- * All blocks have boundary tag. It will be used for coalescing & mm_exit.
- * If new allocation request with small alligned size, It generates big block which
- * size is (GRP_CREATE_NUM) times as big as request.
- * It is more effective to manage external fragmentation.
- * 
+ * In this naive approach, a block is allocated by simply incrementing
+ * the brk pointer.  A block is pure payload. There are no headers or
+ * footers.  Blocks are never coalesced or reused. Realloc is
+ * implemented directly using mm_malloc and mm_free.
+ *
+ * NOTE TO STUDENTS: Replace this header comment with your own header
+ * comment that gives a high level description of your solution.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,8 +73,7 @@ static void remove_range(range_t **ranges, char *lo)
 
 #define WSIZE 4
 #define DSIZE 8
-#define CHUNKSIZE (1<<9)
-#define GRP_CREATE_NUM (1<<3)
+#define CHUNKSIZE (1<<6)
 
 #define MIN_BLOCK_SIZE (2 * DSIZE)
 
@@ -102,40 +101,15 @@ static void remove_range(range_t **ranges, char *lo)
 #define NEXT_BLKP(bp)	((char*)(bp) + GET_SIZE((char*)(bp) - WSIZE))
 #define PREV_BLKP(bp)	((char*)(bp) - GET_SIZE((char*)(bp) - DSIZE))
 
-#define SIZE_CLASS_NUM	32
+#define SIZE_CLASS_NUM 8
 
 #define SIZE_CLASS_0	16
 #define SIZE_CLASS_1	32
-#define SIZE_CLASS_2	48
-#define SIZE_CLASS_3	64
-#define SIZE_CLASS_4	80
-#define SIZE_CLASS_5	96
-#define SIZE_CLASS_6	112
-#define SIZE_CLASS_7	128
-#define SIZE_CLASS_8	160
-#define SIZE_CLASS_9	192
-#define SIZE_CLASS_10	224
-#define SIZE_CLASS_11	256
-#define SIZE_CLASS_12	320
-#define SIZE_CLASS_13	384
-#define SIZE_CLASS_14	448
-
-#define SIZE_CLASS_15	512
-#define SIZE_CLASS_16	640
-#define SIZE_CLASS_17	768
-#define SIZE_CLASS_18	896
-#define SIZE_CLASS_19	1024
-#define SIZE_CLASS_20	1280
-#define SIZE_CLASS_21	1536
-#define SIZE_CLASS_22	1792
-#define SIZE_CLASS_23	2048
-#define SIZE_CLASS_24	3072
-#define SIZE_CLASS_25	4096
-#define SIZE_CLASS_26	6144
-#define SIZE_CLASS_27	8192
-#define SIZE_CLASS_28	12288
-#define SIZE_CLASS_29	16384
-#define SIZE_CLASS_30	20480
+#define SIZE_CLASS_2	64
+#define SIZE_CLASS_3	128
+#define SIZE_CLASS_4	256
+#define SIZE_CLASS_5	512
+#define SIZE_CLASS_6	1024
 
 static void *size_class_p;
 static void *prologue;
@@ -148,47 +122,42 @@ static int get_size_class(size_t asize) {
 	else if (asize <= SIZE_CLASS_4) return 4;
 	else if (asize <= SIZE_CLASS_5) return 5;
 	else if (asize <= SIZE_CLASS_6) return 6;
-	else if (asize <= SIZE_CLASS_7) return 7;
-	else if (asize <= SIZE_CLASS_8) return 8;
-	else if (asize <= SIZE_CLASS_9) return 9;
-	else if (asize <= SIZE_CLASS_10) return 10;
-	else if (asize <= SIZE_CLASS_11) return 11;
-	else if (asize <= SIZE_CLASS_12) return 12;
-	else if (asize <= SIZE_CLASS_13) return 13;
-	else if (asize <= SIZE_CLASS_14) return 14;
-
-	else if (asize <= SIZE_CLASS_15) return 15;
-	else if (asize <= SIZE_CLASS_16) return 16;
-	else if (asize <= SIZE_CLASS_17) return 17;
-	else if (asize <= SIZE_CLASS_18) return 18;
-	else if (asize <= SIZE_CLASS_19) return 19;
-	else if (asize <= SIZE_CLASS_20) return 20;
-	else if (asize <= SIZE_CLASS_21) return 21;
-	else if (asize <= SIZE_CLASS_22) return 22;
-	else if (asize <= SIZE_CLASS_23) return 23;
-	else if (asize <= SIZE_CLASS_24) return 24;
-	else if (asize <= SIZE_CLASS_25) return 25;
-	else if (asize <= SIZE_CLASS_26) return 26;
-	else if (asize <= SIZE_CLASS_27) return 27;
-	else if (asize <= SIZE_CLASS_28) return 28;
-	else if (asize <= SIZE_CLASS_29) return 29;
-	else if (asize <= SIZE_CLASS_30) return 30;
-
-	else return 31;
+	else return 7;
 }
 
 static void *get_class_root(int class) {
 	return size_class_p + (DSIZE * class);
 }
 
-// Function Declaration
-static void insert_block(void*, size_t);
-static void remove_from_list(void*);
-static void *extend_heap(size_t);
-static void *extend_heap_grp(size_t);
 static void *coalesce(void*);
 static void *find_fit(size_t);
 static void place(void*, size_t);
+
+static void insert_block(void *bp, size_t asize) {
+	void *sclassp = get_class_root(get_size_class(asize));
+	SET_PREV_F(bp, sclassp);
+	SET_NEXT_F(bp, NEXT_FREE(sclassp));
+	SET_PREV_F(NEXT_FREE(sclassp), bp);
+	SET_NEXT_F(sclassp, bp);
+}
+
+static void remove_block(void *bp) {
+	SET_NEXT_F(PREV_FREE(bp), NEXT_FREE(bp));
+	SET_PREV_F(NEXT_FREE(bp), PREV_FREE(bp));
+}
+
+static void *extend_heap(size_t asize) {
+	char *bp;
+
+	if ((bp = mem_sbrk(asize)) == (void*)-1) return NULL;
+	
+	PUT(HDRP(bp), PACK(asize, 0));
+	PUT(FTRP(bp), PACK(asize, 0));
+	PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
+	insert_block(bp, asize);
+	
+	return coalesce(bp);
+}
 
 /*
  * mm_init - initialize the malloc package.
@@ -202,18 +171,17 @@ int mm_init(range_t **ranges)
 	// Size Class Root Setup
 	for (i = 0; i < SIZE_CLASS_NUM; i++) {
 		temp = size_class_p + i * DSIZE;
-		// Self directing
 		SET_NEXT_F(temp, temp);
 		SET_PREV_F(temp, temp);
 	}
 
-	// Prologue and Epilogue
+	// Dummy Block
 	prologue = size_class_p + (SIZE_CLASS_NUM + 1) * DSIZE;
 	PUT(prologue - WSIZE, PACK(DSIZE, 1));
 	PUT(prologue, PACK(DSIZE, 1));
 	PUT(prologue + WSIZE, PACK(0, 1));
 
-//	if (extend_heap(CHUNKSIZE) == NULL) return -1;
+	if (extend_heap(CHUNKSIZE) == NULL) return -1;
 	/* DON't MODIFY THIS STAGE AND LEAVE IT AS IT WAS */
 	gl_ranges = ranges;
 
@@ -228,22 +196,17 @@ void* mm_malloc(size_t size)
 {
 	void *bp;
 	size_t asize = ALIGN(size + DSIZE);
+	size_t extendsize;
 
 	if (size == 0) return NULL;
-
 	if ((bp = find_fit(asize)) != NULL) {
 		place(bp, asize);
 		return bp;
 	}
 
-	// Create new block as group (Request size is small enough)
-	if (asize <= CHUNKSIZE) {
-		if ((bp = extend_heap_grp(asize)) == NULL) return NULL;
-	}
-
-	// Normal case
-	else {
-		if ((bp = extend_heap(asize)) == NULL) return NULL;
+	extendsize = MAX(asize, CHUNKSIZE);
+	if ((bp = extend_heap(extendsize)) == NULL) {
+		return NULL;
 	}
 
 	place(bp, asize);
@@ -256,14 +219,8 @@ void* mm_malloc(size_t size)
 void mm_free(void *ptr)
 {
 	size_t size = GET_SIZE(HDRP(ptr));
-	if (GET_ISGRP(HDRP(ptr))) {
-		PUT(HDRP(ptr), PACK_GRP(size, 0));
-		PUT(FTRP(ptr), PACK_GRP(size, 0));
-	}
-	else {
-		PUT(HDRP(ptr), PACK(size, 0));
-		PUT(FTRP(ptr), PACK(size, 0));
-	}
+	PUT(HDRP(ptr), PACK(size, 0));
+	PUT(FTRP(ptr), PACK(size, 0));
 	insert_block(ptr, size);
 
 	coalesce(ptr);
@@ -292,52 +249,9 @@ void mm_exit(void)
 		if (GET_ALLOC(HDRP(scanner))) mm_free(scanner);
 		scanner = NEXT_BLKP(scanner);
 	}
+//	mem_reset_brk();
 }
 
-// Insert block into proper size class
-static void insert_block(void *bp, size_t asize) {
-	void *sclassp = get_class_root(get_size_class(asize));
-	SET_PREV_F(bp, sclassp);
-	SET_NEXT_F(bp, NEXT_FREE(sclassp));
-	SET_PREV_F(NEXT_FREE(sclassp), bp);
-	SET_NEXT_F(sclassp, bp);
-}
-
-// Remove block bp from size class list.
-static void remove_from_list(void *bp) {
-	SET_NEXT_F(PREV_FREE(bp), NEXT_FREE(bp));
-	SET_PREV_F(NEXT_FREE(bp), PREV_FREE(bp));
-}
-
-// Extend heap
-static void *extend_heap(size_t asize) {
-	char *bp;
-
-	if ((bp = mem_sbrk(asize)) == (void*)-1) return NULL;
-	
-	PUT(HDRP(bp), PACK(asize, 0));
-	PUT(FTRP(bp), PACK(asize, 0));
-	PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
-	insert_block(bp, asize);
-	
-	return coalesce(bp);
-}
-
-// Extend heap as group.
-static void *extend_heap_grp(size_t asize) {
-	char *bp;
-	size_t grpsize = GRP_CREATE_NUM * asize;
-
-	if ((bp = mem_sbrk(grpsize)) == (void*)-1) return NULL;
-	PUT(HDRP(bp), PACK_GRP(grpsize, 0));
-	PUT(FTRP(bp), PACK_GRP(grpsize, 0));
-	PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
-	insert_block(bp, asize);
-
-	return bp;
-}
-
-// Coalesce free blocks
 static void *coalesce(void *bp) {
 	size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
 	size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
@@ -345,18 +259,15 @@ static void *coalesce(void *bp) {
 
 	if (prev_alloc && next_alloc) return bp;
 
-	remove_from_list(bp);
-
+	remove_block(bp);
 	if (!next_alloc) {
 		size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-		SET_NEXT_F(PREV_FREE(NEXT_BLKP(bp)), NEXT_FREE(NEXT_BLKP(bp)));
-		SET_PREV_F(NEXT_FREE(NEXT_BLKP(bp)), PREV_FREE(NEXT_BLKP(bp)));
+		remove_block(NEXT_BLKP(bp));
 	}
 
 	if (!prev_alloc) {
 		bp = PREV_BLKP(bp);
-		SET_NEXT_F(PREV_FREE(bp), NEXT_FREE(bp));
-		SET_PREV_F(NEXT_FREE(bp), PREV_FREE(bp));
+		remove_block(bp);
 		size += GET_SIZE(HDRP(bp));
 	}
 	PUT(HDRP(bp), PACK(size, 0));
@@ -366,8 +277,6 @@ static void *coalesce(void *bp) {
 	return bp;
 }
 
-// Find blocks from size class lists.
-// Implemented with Segregated Free Lists (Segregated fits)
 static void *find_fit(size_t asize) {
 	int classnum = get_size_class(asize);
 	void *sclassp;
@@ -385,43 +294,25 @@ static void *find_fit(size_t asize) {
 	return NULL;
 }
 
-// Place new blocks
-// If the block is big enough and it was generated as group,
-// Splitted free block remains same size class.
 static void place(void *bp, size_t asize) {
 	size_t bsize = GET_SIZE(HDRP(bp));
 
 	// Remove bp from size class list
+//	SET_NEXT_F(PREV_FREE(bp), NEXT_FREE(bp));
+//	SET_PREV_F(NEXT_FREE(bp), PREV_FREE(bp));
+	remove_block(bp);
 
 	if (bsize - asize >= MIN_BLOCK_SIZE) {
-		// GROUP
-		if (GET_ISGRP(HDRP(bp))) {
-			PUT(HDRP(bp), PACK_GRP(asize, 1));
-			PUT(FTRP(bp), PACK_GRP(asize, 1));
+		PUT(HDRP(bp), PACK(asize, 1));
+		PUT(FTRP(bp), PACK(asize, 1));
 
-			// Reorganize free block list
-			SET_PREV_F(NEXT_BLKP(bp), PREV_FREE(bp));
-			SET_NEXT_F(NEXT_BLKP(bp), NEXT_FREE(bp));
-			SET_NEXT_F(PREV_FREE(bp), NEXT_BLKP(bp));
-			SET_PREV_F(NEXT_FREE(bp), NEXT_BLKP(bp));
-
-			bp = NEXT_BLKP(bp);
-			PUT(HDRP(bp), PACK_GRP(bsize - asize, 0));
-			PUT(FTRP(bp), PACK_GRP(bsize - asize, 0));
-		}
-		else {
-			remove_from_list(bp);
-			PUT(HDRP(bp), PACK(asize, 1));
-			PUT(FTRP(bp), PACK(asize, 1));
-
-			bp = NEXT_BLKP(bp);
-			PUT(HDRP(bp), PACK(bsize - asize, 0));
-			PUT(FTRP(bp), PACK(bsize - asize, 0));
-			insert_block(bp, bsize - asize);
-		}
+		// Splited Part
+		bp = NEXT_BLKP(bp);
+		PUT(HDRP(bp), PACK(bsize - asize, 0));
+		PUT(FTRP(bp), PACK(bsize - asize, 0));
+		insert_block(bp, bsize - asize);
 	}
 	else {
-		remove_from_list(bp);
 		PUT(HDRP(bp), PACK(bsize, 1));
 		PUT(FTRP(bp), PACK(bsize, 1));
 	}

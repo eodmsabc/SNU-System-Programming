@@ -106,19 +106,19 @@ static void remove_range(range_t **ranges, char *lo)
 
 #define SIZE_CLASS_0	16
 #define SIZE_CLASS_1	32
-#define SIZE_CLASS_2	48	// detailed small size classes
+#define SIZE_CLASS_2	48
 #define SIZE_CLASS_3	64
-#define SIZE_CLASS_4	96	// detailed small size classes
-#define SIZE_CLASS_5	128
-#define SIZE_CLASS_6	256
-#define SIZE_CLASS_7	384	// detailed small size classes
-#define SIZE_CLASS_8	512
-#define SIZE_CLASS_9	1024
-#define SIZE_CLASS_10	2048
-#define SIZE_CLASS_11	4096
-#define SIZE_CLASS_12	8192
-#define SIZE_CLASS_13	16384
-#define SIZE_CLASS_14	32768
+#define SIZE_CLASS_4	80
+#define SIZE_CLASS_5	96
+#define SIZE_CLASS_6	112
+#define SIZE_CLASS_7	128
+#define SIZE_CLASS_8	256
+#define SIZE_CLASS_9	512
+#define SIZE_CLASS_10	1024
+#define SIZE_CLASS_11	2048
+#define SIZE_CLASS_12	4096
+#define SIZE_CLASS_13	8192
+#define SIZE_CLASS_14	16384
 
 static void *size_class_p;
 static void *prologue;
