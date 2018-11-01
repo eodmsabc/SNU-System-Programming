@@ -2,11 +2,11 @@
  * mm.c
  * Memory Allocation with Segregated Free Lists
  *
- * Free blocks are categorized into 32 size classes.
+ * Free blocks are categorized into 16 size classes.
  * All blocks have boundary tag. It will be used for coalescing & mm_exit.
  * If new allocation request with small alligned size, It generates big block which
  * size is (GRP_CREATE_NUM) times as big as request.
- * It is more effective to manage external fragmentation.
+ * It is effective to manage external fragmentation.
  * 
  */
 #include <stdio.h>
@@ -102,40 +102,23 @@ static void remove_range(range_t **ranges, char *lo)
 #define NEXT_BLKP(bp)	((char*)(bp) + GET_SIZE((char*)(bp) - WSIZE))
 #define PREV_BLKP(bp)	((char*)(bp) - GET_SIZE((char*)(bp) - DSIZE))
 
-#define SIZE_CLASS_NUM	32
+#define SIZE_CLASS_NUM	16
 
 #define SIZE_CLASS_0	16
 #define SIZE_CLASS_1	32
-#define SIZE_CLASS_2	48
+#define SIZE_CLASS_2	48	// detailed small size classes
 #define SIZE_CLASS_3	64
-#define SIZE_CLASS_4	80
-#define SIZE_CLASS_5	96
-#define SIZE_CLASS_6	112
-#define SIZE_CLASS_7	128
-#define SIZE_CLASS_8	160
-#define SIZE_CLASS_9	192
-#define SIZE_CLASS_10	224
-#define SIZE_CLASS_11	256
-#define SIZE_CLASS_12	320
-#define SIZE_CLASS_13	384
-#define SIZE_CLASS_14	448
-
-#define SIZE_CLASS_15	512
-#define SIZE_CLASS_16	640
-#define SIZE_CLASS_17	768
-#define SIZE_CLASS_18	896
-#define SIZE_CLASS_19	1024
-#define SIZE_CLASS_20	1280
-#define SIZE_CLASS_21	1536
-#define SIZE_CLASS_22	1792
-#define SIZE_CLASS_23	2048
-#define SIZE_CLASS_24	3072
-#define SIZE_CLASS_25	4096
-#define SIZE_CLASS_26	6144
-#define SIZE_CLASS_27	8192
-#define SIZE_CLASS_28	12288
-#define SIZE_CLASS_29	16384
-#define SIZE_CLASS_30	20480
+#define SIZE_CLASS_4	96	// detailed small size classes
+#define SIZE_CLASS_5	128
+#define SIZE_CLASS_6	256
+#define SIZE_CLASS_7	384	// detailed small size classes
+#define SIZE_CLASS_8	512
+#define SIZE_CLASS_9	1024
+#define SIZE_CLASS_10	2048
+#define SIZE_CLASS_11	4096
+#define SIZE_CLASS_12	8192
+#define SIZE_CLASS_13	16384
+#define SIZE_CLASS_14	32768
 
 static void *size_class_p;
 static void *prologue;
@@ -156,25 +139,7 @@ static int get_size_class(size_t asize) {
 	else if (asize <= SIZE_CLASS_12) return 12;
 	else if (asize <= SIZE_CLASS_13) return 13;
 	else if (asize <= SIZE_CLASS_14) return 14;
-
-	else if (asize <= SIZE_CLASS_15) return 15;
-	else if (asize <= SIZE_CLASS_16) return 16;
-	else if (asize <= SIZE_CLASS_17) return 17;
-	else if (asize <= SIZE_CLASS_18) return 18;
-	else if (asize <= SIZE_CLASS_19) return 19;
-	else if (asize <= SIZE_CLASS_20) return 20;
-	else if (asize <= SIZE_CLASS_21) return 21;
-	else if (asize <= SIZE_CLASS_22) return 22;
-	else if (asize <= SIZE_CLASS_23) return 23;
-	else if (asize <= SIZE_CLASS_24) return 24;
-	else if (asize <= SIZE_CLASS_25) return 25;
-	else if (asize <= SIZE_CLASS_26) return 26;
-	else if (asize <= SIZE_CLASS_27) return 27;
-	else if (asize <= SIZE_CLASS_28) return 28;
-	else if (asize <= SIZE_CLASS_29) return 29;
-	else if (asize <= SIZE_CLASS_30) return 30;
-
-	else return 31;
+	else return 15;
 }
 
 static void *get_class_root(int class) {
