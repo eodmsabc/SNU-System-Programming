@@ -278,11 +278,56 @@ void mm_free(void *ptr)
 }
 
 /*
- * mm_realloc - empty implementation; YOU DO NOT NEED TO IMPLEMENT THIS
+ * mm_realloc - Standalone Realloc
  */
 void* mm_realloc(void *ptr, size_t t)
 {
-  return NULL;
+	void *newbp;
+	size_t copy_index = 0;
+	size_t orig_size;
+	size_t next_size;
+	size_t new_asize;
+
+	if (ptr == NULL) {
+		return mm_malloc(t);
+	}
+	if (t == 0) {
+		mm_free(ptr);
+		return NULL;
+	}
+
+	orig_size = GET_SIZE(HDRP(ptr));
+	new_asize = ALIGN(t + DSIZE);
+
+	// Shrink
+	if (orig_size - new_asize >= MIN_BLOCK_SIZE) {
+		set_boundary_tag(ptr, new_asize, GET_ISGRP(HDRP(ptr)) | ALLOCTAG);
+		set_boundary_tag(NEXT_BLKP(ptr), orig_size - new_asize, GET_ISGRP(HDRP(ptr)));
+		insert_block(NEXT_BLKP(ptr), orig_size - new_asize);
+		coalesce(NEXT_BLKP(ptr));
+		return ptr;
+	}
+	else if (new_asize <= orig_size) {
+		return ptr;
+	}
+
+	// Merge with next block
+	if (!GET_ALLOC(HDRP(NEXT_BLKP(ptr)))) {
+		next_size = GET_SIZE(HDRP(NEXT_BLKP(ptr)));
+		remove_from_list(NEXT_BLKP(ptr));
+		set_boundary_tag(ptr, orig_size + next_size, ALLOCTAG);
+		return mm_realloc(ptr, t);
+	}
+
+	// Allocate New Block
+	newbp = mm_malloc(t);
+	// Copy Data
+	while(copy_index < orig_size - DSIZE) {
+		PUT(newbp + copy_index, GET(ptr + copy_index));
+		copy_index += 4;
+	}
+	mm_free(ptr);
+	return newbp;
 }
 
 /*
