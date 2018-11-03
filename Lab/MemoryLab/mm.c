@@ -147,6 +147,8 @@ static void remove_range(range_t **ranges, char *lo)
 static void *size_class_p;
 static void *prologue;
 
+// returns proper size class number (Integer value 0 ~ 31)
+// It works with get_class_root function.
 static int get_size_class(size_t asize) {
 	if (asize <= SIZE_CLASS_1) return 0;
 	else if (asize <= SIZE_CLASS_2) return 1;
@@ -185,6 +187,7 @@ static int get_size_class(size_t asize) {
 	else return 31;
 }
 
+// Returns root node of seg-list.
 static void *get_class_root(int class) {
 	return size_class_p + (DSIZE * class);
 }
@@ -299,7 +302,7 @@ void* mm_realloc(void *ptr, size_t t)
 	orig_size = GET_SIZE(HDRP(ptr));
 	new_asize = ALIGN(t + DSIZE);
 
-	// Shrink
+	// Shrink if newsize is smaller than orignal size.
 	if (orig_size - new_asize >= MIN_BLOCK_SIZE) {
 		set_boundary_tag(ptr, new_asize, GET_ISGRP(HDRP(ptr)) | ALLOCTAG);
 		set_boundary_tag(NEXT_BLKP(ptr), orig_size - new_asize, GET_ISGRP(HDRP(ptr)));
@@ -311,11 +314,12 @@ void* mm_realloc(void *ptr, size_t t)
 		return ptr;
 	}
 
-	// Merge with next block
+	// Merge with next block if next is free
 	if (!GET_ALLOC(HDRP(NEXT_BLKP(ptr)))) {
 		next_size = GET_SIZE(HDRP(NEXT_BLKP(ptr)));
 		remove_from_list(NEXT_BLKP(ptr));
 		set_boundary_tag(ptr, orig_size + next_size, ALLOCTAG);
+		// After merge, start from the beginning by recursive call.
 		return mm_realloc(ptr, t);
 	}
 
@@ -326,6 +330,7 @@ void* mm_realloc(void *ptr, size_t t)
 		PUT(newbp + copy_index, GET(ptr + copy_index));
 		copy_index += 4;
 	}
+	// Free original area
 	mm_free(ptr);
 	return newbp;
 }
@@ -345,13 +350,25 @@ void mm_exit(void)
 	}
 }
 
+
+/*
+ * mm_check - 
+ */
+void mm_check(void) {
+	;
+}
+
 // Set boundary tag
 static void set_boundary_tag(void *bp, size_t asize, size_t tagbit) {
 	PUT(HDRP(bp), PACK(asize, tagbit));
 	PUT(FTRP(bp), PACK(asize, tagbit));
 }
 
+
 // Insert block into proper size class
+// Size class is determined by parameter 'asize' only. It does not check bp's header.
+// It allows group block.
+// Insert new block at the beginning of the list.
 static void insert_block(void *bp, size_t asize) {
 	void *sclassp = get_class_root(get_size_class(asize));
 	SET_PREV_F(bp, sclassp);
@@ -361,12 +378,15 @@ static void insert_block(void *bp, size_t asize) {
 }
 
 // Remove block bp from size class list.
+// After remove the block, re-connect the pointers.
 static void remove_from_list(void *bp) {
 	SET_NEXT_F(PREV_FREE(bp), NEXT_FREE(bp));
 	SET_PREV_F(NEXT_FREE(bp), PREV_FREE(bp));
 }
 
 // Extend heap
+// Extend heap with mem_sbrk function. Then, update epilogue block
+// Insert newly extended block and coalesce.
 static void *extend_heap(size_t asize) {
 	char *bp;
 
@@ -381,6 +401,9 @@ static void *extend_heap(size_t asize) {
 }
 
 // Extend heap as group.
+// Basically same structure with extend_heap function.
+// But newly created block will be inserted into smaller class list.
+// This function not calls coalesce. It uses it's own coalescing mechanism.
 static void *extend_heap_grp(size_t asize) {
 	char *bp;
 	size_t grpsize = GRP_CREATE_NUM * asize;
@@ -388,11 +411,23 @@ static void *extend_heap_grp(size_t asize) {
 	// New block is created with grpsize big
 	if ((bp = mem_sbrk(grpsize)) == (void*)-1) return NULL;
 
+	// This function uses it's own coalescing mechanism.
+	// When previous block is free but generated as group,
+	// that's the only case that 2 free blocks become adjacent.
+	if (!GET_ALLOC(HDRP(PREV_BLKP(bp))) && !GET_ISGRP(HDRP(PREV_BLKP(bp)))) {
+		bp = PREV_BLKP(bp);
+		remove_from_list(bp);
+		grpsize += GET_SIZE(HDRP(bp));
+	}
+
 	set_boundary_tag(bp, grpsize, GROUPTAG);
 	PUT(HDRP(NEXT_BLKP(bp)), PACK(0, ALLOCTAG));
-	// I use asize NOT grpsize. This blocks will be connected smaller size-class list.
+
+	// insert_block uses asize NOT grpsize.
+	// This blocks will be inserted into smaller size-class list than it's real size.
 	insert_block(bp, asize);
 
+	// It returns bp without calling coalesce function.
 	return bp;
 }
 
@@ -468,6 +503,7 @@ static void place(void *bp, size_t asize) {
 			bp = NEXT_BLKP(bp);
 			set_boundary_tag(bp, bsize - asize, GROUPTAG | FREETAG);
 		}
+		// Same implementation with textbook from here.
 		else {
 			remove_from_list(bp);
 			set_boundary_tag(bp, asize, ALLOCTAG);
