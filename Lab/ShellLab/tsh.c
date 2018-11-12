@@ -95,6 +95,14 @@ void app_error(char *msg);
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
 
+// Wrapper Functions
+pid_t Fork(void);
+pid_t Waitpid(pid_t pid, int *wstatus, int options);
+int Setpgid(pid_t pid, pid_t pgid);
+int Kill(pid_t pid, int sig);
+int Sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+
+
 /*
  * main - The shell's main routine
  */
@@ -180,7 +188,6 @@ void eval(char *cmdline)
 	int bg;
 	pid_t pid;
 	sigset_t chldmask;
-	int mask_err = 0;
 	
 	strcpy(buf, cmdline);
 	bg = parseline(buf, argv);
@@ -190,15 +197,15 @@ void eval(char *cmdline)
 	if (!builtin_cmd(argv)) {
 
 		// When command not found happens, added job should be deleted.
-		mask_err += sigemptyset(&chldmask);
-		mask_err += sigaddset(&chldmask, SIGCHLD);
-		mask_err += sigprocmask(SIG_BLOCK, &chldmask, NULL);
+		sigemptyset(&chldmask);
+		sigaddset(&chldmask, SIGCHLD);
+		Sigprocmask(SIG_BLOCK, &chldmask, NULL);
 
-		if ((pid = fork()) == 0) {
-			if (setpgid(0, 0))	unix_error("fork: setpgid error");
+		if ((pid = Fork()) == 0) {
 
-			mask_err += sigprocmask(SIG_UNBLOCK, &chldmask, NULL);
-			if (mask_err < 0)	unix_error("sigmask error");
+			Setpgid(0, 0);	// Set child's own process group id
+
+			Sigprocmask(SIG_UNBLOCK, &chldmask, NULL);
 
 			// If Command is invalid, job should not be added. (delete immediately)
 			if (execve(argv[0], argv, environ) < 0) {
@@ -207,10 +214,9 @@ void eval(char *cmdline)
 			}
 		}
 
-		addjob(jobs, pid, bg+1, cmdline);
+		addjob(jobs, pid, (bg? BG : FG), cmdline);
 
-		mask_err += sigprocmask(SIG_UNBLOCK, &chldmask, NULL);	// Delete invalid job
-		if (mask_err < 0) unix_error("sigmask error");
+		Sigprocmask(SIG_UNBLOCK, &chldmask, NULL);	// Delete job for invalid command
 
 		if (!bg) {
 			waitfg(pid);
@@ -310,11 +316,13 @@ void do_bgfg(char **argv)
 	int id;
 	struct job_t *job;
 
+	// No arguments
 	if (strid == NULL) {
 		printf("%s command requires PID or %%jobid argument\n", argv[0]);
 		return;
 	}
 
+	// Job ID as argument
 	if (strid[0] == '%') {
 		id = atoi(strid+1);
 		job = getjobjid(jobs, id);
@@ -323,8 +331,10 @@ void do_bgfg(char **argv)
 			return;
 		}
 	}
+
+	// PID as argument
 	else {
-		if (strid[0] < '0' || '9' < strid[0]) {
+		if (strid[0] < '0' || '9' < strid[0]) {	// If arg was not a number
 			printf("%s: argument must be a PID or %%jobid\n", bg? "bg" : "fg");
 			return;
 		}
@@ -336,14 +346,16 @@ void do_bgfg(char **argv)
 		}
 	}
 	
+	// Job found. Send SIGCONT signal to target job.
 	if (job) {
-		if (kill(-job->pid, SIGCONT)) unix_error("SIGCONT Error");
+		if (Kill(-job->pid, SIGCONT)) unix_error("SIGCONT Error");
+
+		job->state = (bg? BG : FG);
+
 		if (!bg) {	// If foreground
-			job->state = FG;
 			waitfg(job->pid);
 		}
 		else {		// If background
-			job->state = BG;
 			printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
 		}
 	}
@@ -355,7 +367,9 @@ void do_bgfg(char **argv)
 void waitfg(pid_t pid)
 {
 	if (pid == 0) return;
-	while(pid == fgpid(jobs));
+	while(pid == fgpid(jobs)) { // while pid is foreground process
+		sleep(1);
+	}
 	return;
 }
 
@@ -374,15 +388,21 @@ void sigchld_handler(int sig)
 {
 	pid_t pid;
 	int status;
-	if ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
+
+	if ((pid = Waitpid(-1, &status, WNOHANG | WUNTRACED))) {
+		// Exit normally
 		if(WIFEXITED(status)) {
 			deletejob(jobs, pid);
 		}
+
+		// Terminated by signal
 		else if (WIFSIGNALED(status)) {
 			printf("Job [%d] (%d) terminated by signal %d\n",
 					pid2jid(pid), pid, WTERMSIG(status));
 			deletejob(jobs, pid);
 		}
+
+		// Stopped by signal
 		else if (WIFSTOPPED(status)) {
 			printf("Job [%d] (%d) stopped by signal %d\n",
 					pid2jid(pid), pid, WSTOPSIG(status));
@@ -401,7 +421,7 @@ void sigint_handler(int sig)
 {
 	pid_t fpid = fgpid(jobs);
 	if (fpid) {
-		if (kill(-fpid, sig)) unix_error("SIGINT Error");
+		Kill(-fpid, sig);	// Send sig to process group
 	}
 	return;
 }
@@ -415,7 +435,7 @@ void sigtstp_handler(int sig)
 {
 	pid_t fpid = fgpid(jobs);
 	if (fpid) {
-		if (kill(-fpid, sig)) unix_error("SIGTSTP Error");
+		Kill(-fpid, sig);	// Send sig to process group
 	}
 	return;
 }
@@ -638,6 +658,54 @@ void sigquit_handler(int sig)
   printf("Terminating after receipt of SIGQUIT signal\n");
   exit(1);
 }
+
+
+/*
+ * Wrapper functions with unix_error function
+ */
+pid_t Fork(void) {
+	pid_t retval;
+	if ((retval = fork()) < 0) {
+		unix_error("fork error");
+	}
+	return retval;
+}
+
+pid_t Waitpid(pid_t pid, int *wstatus, int options) {
+	pid_t retval;
+	if ((retval = waitpid(pid, wstatus, options)) < 0) {
+		unix_error("waitpid error");
+	}
+	return retval;
+}
+
+int Setpgid(pid_t pid, pid_t pgid) {
+	int retval;
+	if ((retval = setpgid(pid, pgid)) < 0) {
+		unix_error("setpgid error");
+	}
+	return retval;
+}
+
+int Kill(pid_t pid, int sig) {
+	int retval;
+	if ((retval = kill(pid, sig)) < 0) {
+		unix_error("kill error");
+	}
+	return retval;
+}
+
+int Sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
+	int retval;
+	if ((retval = sigprocmask(how, set, oldset)) < 0) {
+		unix_error("sigprocmask error");
+	}
+	return retval;
+}
+
+
+
+
 
 
 
