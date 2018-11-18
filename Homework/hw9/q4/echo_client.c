@@ -43,14 +43,10 @@ int main(int argc, char **argv) {
 
 	while(1) {
 		write(STDOUT_FILENO, "type:", 5);
-		//if(readline(&mystdin, buf, MAXLINE) == 0) break;
 		if (fgets(buf, MAXLINE, stdin) <= 0) break;
-		//printf("client write %d\n", strlen(buf));
 		mywrite(clientfd, buf, strlen(buf));
 
-		//printf("client read start\n");
 		readline(&client, buf, MAXLINE);
-
 		write(STDOUT_FILENO, "echo:", 5);
 		write(STDOUT_FILENO, buf, strlen(buf));
 	}
@@ -78,7 +74,7 @@ ssize_t myread(IO_STRUCT *ios, char *usrbuf, size_t n) {
 		else ios->ptr = ios->buffer;
 	}
 	cnt = MIN(n, ios->cnt);
-	memcpy(usrbuf, ios->buffer, cnt);
+	memcpy(usrbuf, ios->ptr, cnt);
 	ios->cnt -= cnt;
 	ios->ptr += cnt;
 	return cnt;
@@ -107,8 +103,8 @@ ssize_t readline(IO_STRUCT *ios, char *usrbuf, size_t maxlen) {
 }
 
 ssize_t mywrite(int fd, char *usrbuf, size_t n) {
-	int left=n;
-	int written;
+	size_t left=n;
+	ssize_t written;
 	char *bufp = usrbuf;
 
 	while(left > 0) {
