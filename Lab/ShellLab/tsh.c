@@ -389,7 +389,7 @@ void sigchld_handler(int sig)
 	pid_t pid;
 	int status;
 
-	if ((pid = Waitpid(-1, &status, WNOHANG | WUNTRACED))) {
+	while ((pid = Waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
 		// Exit normally
 		if(WIFEXITED(status)) {
 			deletejob(jobs, pid);
@@ -674,7 +674,8 @@ pid_t Fork(void) {
 pid_t Waitpid(pid_t pid, int *wstatus, int options) {
 	pid_t retval;
 	if ((retval = waitpid(pid, wstatus, options)) < 0) {
-		unix_error("waitpid error");
+		if (errno != ECHILD)
+			unix_error("waitpid error");
 	}
 	return retval;
 }
